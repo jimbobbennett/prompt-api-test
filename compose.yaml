@@ -1,0 +1,14 @@
+services:
+  phoenix:
+    image: ${PHOENIX_IMAGE:-arizephoenix/phoenix:latest}
+    ports:
+      - "${PHOENIX_PORT:-6006}:6006"
+      - "${PHOENIX_OTLP_PORT:-4317}:4317"
+    environment:
+      PHOENIX_WORKING_DIR: /phoenix
+    volumes:
+      - phoenix-data:/phoenix
+    restart: unless-stopped
+
+volumes:
+  phoenix-data:

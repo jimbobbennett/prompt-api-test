@@ -1,0 +1,28 @@
+{
+  "name": "prompt-api-test",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.12" },
+  "scripts": {
+    "seed": "tsx src/seed.ts",
+    "judges": "tsx src/create-judges.ts",
+    "eval": "tsx src/run-evals.ts",
+    "check": "pnpm typecheck && pnpm test",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@arizeai/phoenix-client": "7.15.0",
+    "ai": "7.0.116",
+    "ajv": "8.17.1",
+    "dotenv": "16.6.1",
+    "playwright": "1.63.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.0.0",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "vitest": "5.0.2"
+  }
+}
