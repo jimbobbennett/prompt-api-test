@@ -17,10 +17,10 @@ const { client, baseUrl, datasetPrefix, evalTimeoutMs } = loadConfig();
 const apiKey = process.env.PHOENIX_API_KEY;
 const judgeModelProvider = process.env.PHOENIX_JUDGE_MODEL_PROVIDER?.toUpperCase() ?? "OPENAI";
 const judgeModelName = process.env.PHOENIX_JUDGE_MODEL_NAME ?? "gpt-6-luna";
-const requested = process.argv.find((arg) => arg.startsWith("--browsers="))?.split("=")[1] ?? "chrome,msedge";
+const requested = process.argv.find((arg) => arg.startsWith("--browsers="))?.split("=")[1] ?? "chrome";
 const browsers = requested.split(",").map((value) => value.trim()).filter(Boolean) as BrowserChannel[];
-if (browsers.some((browser) => !["chrome", "msedge"].includes(browser))) {
-  throw new Error("Supported browser channels are chrome and msedge. Example: pnpm eval -- --browsers=chrome,msedge");
+if (browsers.some((browser) => browser !== "chrome")) {
+  throw new Error("This demo currently supports Chrome only. Example: pnpm eval -- --browsers=chrome");
 }
 const availableGroupIds = BENCHMARK_GROUPS.map((group) => group.id);
 const requestedGroups = process.argv.find((arg) => arg.startsWith("--groups="))?.split("=")[1];

@@ -1,6 +1,6 @@
 # Phoenix Prompt API Benchmark
 
-A small, inspectable demo for evaluating browser built-in language models through Phoenix Chat. For Chrome, the runner starts Google Chrome in new headless mode and attaches Playwright over CDP. Edge runs in a visible browser window. Phoenix stores the datasets and experiments, and the runner writes a local JSON report with per-case timing and scores.
+A small, inspectable demo for evaluating Chrome’s built-in Gemini Nano model through Phoenix Chat. The runner starts Google Chrome in new headless mode and attaches Playwright over CDP. Phoenix stores the datasets and experiments, and the runner writes a local JSON report with per-case timing and scores.
 
 This is a harness demonstration, not a statistically representative model benchmark. The original groups contain five examples each; the IFEval-style group contains 24.
 
@@ -8,16 +8,16 @@ This is a harness demonstration, not a statistically representative model benchm
 
 | Dataset group | Browser model | Evaluator(s) |
 | --- | --- | --- |
-| Receipt extraction | Chrome: Gemini Nano; Edge: Phi | `json_schema_valid` and `receipt_values_correct` (TypeScript code evaluators) |
-| Intent / task success | Chrome: Gemini Nano; Edge: Phi | `task_success` (Phoenix LLM judge) |
-| Instruction following (IFEval-style) | Chrome: Gemini Nano; Edge: Phi | `ifeval_prompt_level` and `ifeval_instruction_level` (TypeScript code evaluators) |
-| Safety | Chrome: Gemini Nano; Edge: Phi | `safety_appropriate` (Phoenix LLM judge) |
+| Receipt extraction | Chrome: Gemini Nano | `json_schema_valid` and `receipt_values_correct` (TypeScript code evaluators) |
+| Intent / task success | Chrome: Gemini Nano | `task_success` (Phoenix LLM judge) |
+| Instruction following (IFEval-style) | Chrome: Gemini Nano | `ifeval_prompt_level` and `ifeval_instruction_level` (TypeScript code evaluators) |
+| Safety | Chrome: Gemini Nano | `safety_appropriate` (Phoenix LLM judge) |
 
 The judge prompts live in [`prompts/`](prompts/). Dataset examples and their references are in [`data/baseline.ts`](data/baseline.ts), with the original IFEval-style examples in [`data/ifeval-style.ts`](data/ifeval-style.ts). The receipt group shares a JSON Schema and checks both structural validity and extracted values. The intent and safety groups use case-specific criteria in their dataset references.
 
 The IFEval-style group uses 24 original prompts with two explicit, mechanically verifiable constraints per response. It is inspired by [IFEval](https://arxiv.org/abs/2311.07911), but it is not the official IFEval dataset or score. `ifeval_prompt_level` scores 1 only when every constraint for a prompt passes. `ifeval_instruction_level` scores the fraction of that prompt's constraints that pass. Checkers cover dash-bullet counts, whitespace-delimited word limits, case-insensitive required/forbidden phrases and phrase counts, and case-insensitive prefixes/suffixes. The checks are code-based; this group does not use an LLM judge.
 
-Each browser run creates one Phoenix experiment per dataset. Browser name, model family, benchmark version, dataset name, and dataset version are recorded as experiment metadata. The JSON report under `results/` contains per-case first-token and total response times plus evaluation details.
+Each run creates one Phoenix experiment per dataset. Browser name, model family, benchmark version, dataset name, and dataset version are recorded as experiment metadata. The JSON report under `results/` contains per-case first-token and total response times plus evaluation details.
 
 ## Example evaluation results
 
@@ -47,8 +47,8 @@ A preliminary run was superseded after we found that reading Phoenix's rendered 
 
 - Node.js 22.12 or newer and pnpm.
 - Phoenix running at `http://localhost:6006` (or another URL set in `.env`). Podman Compose is included, but an existing Phoenix instance also works.
-- Google Chrome and/or Microsoft Edge installed locally. The Chrome runner starts the installed Google Chrome binary directly; set `PHOENIX_CHROME_EXECUTABLE_PATH` if Chrome is installed outside its standard location.
-- A browser/device where the built-in Prompt API model is available. The first use can require a model download; availability depends on the browser version, hardware, storage, and settings.
+- Google Chrome installed locally. The Chrome runner starts the installed Google Chrome binary directly; set `PHOENIX_CHROME_EXECUTABLE_PATH` if Chrome is installed outside its standard location.
+- Google Chrome with Gemini Nano available. The first use can require a model download; availability depends on Chrome version, hardware, storage, and settings.
 - A Phoenix-side provider credential and model for the LLM judges. The instructions below use OpenAI and `gpt-6-luna`.
 
 ## 1. Start Phoenix
@@ -136,41 +136,27 @@ Do not open the same profile in two Chrome processes at once. The runner will st
 
 ## 6. Run the benchmark
 
-Run both browser channels:
+Run the full benchmark:
 
 ```sh
-pnpm eval -- --browsers=chrome,msedge
-```
-
-Run only Chrome/Gemini Nano:
-
-```sh
-pnpm eval -- --browsers=chrome
+pnpm eval
 ```
 
 Run only the IFEval-style group against Chrome/Gemini Nano:
 
 ```sh
-pnpm eval -- --browsers=chrome --groups=instruction-following
+pnpm eval -- --groups=instruction-following
 ```
 
 Repeat each case three times to see how scores vary across generations:
 
 ```sh
-pnpm eval -- --browsers=chrome --groups=instruction-following --repetitions=3
+pnpm eval -- --groups=instruction-following --repetitions=3
 ```
 
 Seed or run selected groups with the comma-separated `--groups` option. The runner defaults to all groups and one generation per example. Supported group IDs are `receipt-extraction`, `intent-task-success`, `instruction-following`, and `safety`.
 
-Run only Edge/Phi:
-
-```sh
-pnpm eval -- --browsers=msedge
-```
-
-For Chrome, the runner launches installed Google Chrome with `--headless=new`, using the Gemini Nano profile, and attaches Playwright over Chrome DevTools Protocol. This uses Chrome's full headless mode rather than Playwright's default Chromium headless shell. The runner selects Gemini Nano in Phoenix Chat and starts a fresh chat for every example. Keep the machine awake and connected while the run is in progress.
-
-For Edge, the runner opens a visible browser window with a persistent profile under `.profiles/msedge`, selects Phi in Phoenix Chat, and starts a fresh chat for each example.
+The runner launches installed Google Chrome with `--headless=new`, using the Gemini Nano profile, and attaches Playwright over Chrome DevTools Protocol. This uses Chrome's full headless mode rather than Playwright's default Chromium headless shell. The runner selects Gemini Nano in Phoenix Chat and starts a fresh chat for every example. Keep the machine awake and connected while the run is in progress.
 
 ### Attach Playwright to a manually launched Chrome
 
@@ -209,7 +195,7 @@ A report is written to `results/benchmark-<timestamp>.json`. Phoenix datasets, e
 pnpm check
 ```
 
-This runs TypeScript typechecking and the deterministic evaluator tests. A live benchmark additionally needs Phoenix, seeded datasets, judge credentials, an installed supported browser, and an available built-in model.
+This runs TypeScript typechecking and the deterministic evaluator tests. A live benchmark additionally needs Phoenix, seeded datasets, judge credentials, Google Chrome, and an available Gemini Nano model.
 
 ## Repository layout
 

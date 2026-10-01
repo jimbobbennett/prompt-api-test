@@ -3,7 +3,7 @@ import { lstat, mkdir, readFile, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 
-export type BrowserChannel = "chrome" | "msedge";
+export type BrowserChannel = "chrome";
 export type BrowserAnswer = { response: string; ttftMs: number; durationMs: number };
 export type RenderedListItem = { text: string; marker: string };
 
@@ -128,14 +128,14 @@ export async function openChat(
   channel: BrowserChannel,
   phoenixUrl: string,
 ): Promise<{ context: BrowserContext; page: Page; close: () => Promise<void> }> {
-  const cdpEndpoint = channel === "chrome" ? process.env.PHOENIX_CHROME_CDP_ENDPOINT : undefined;
+  const cdpEndpoint = process.env.PHOENIX_CHROME_CDP_ENDPOINT;
   let context: BrowserContext;
   let close: () => Promise<void>;
 
-  if (channel === "chrome" && !cdpEndpoint) {
+  if (!cdpEndpoint) {
     const profile = resolve(process.env.PHOENIX_CHROME_PROFILE ?? join(process.cwd(), ".profiles", "chrome"));
     ({ context, close } = await launchHeadlessChrome(profile, phoenixUrl));
-  } else if (cdpEndpoint) {
+  } else {
     const browser: Browser = await chromium.connectOverCDP(cdpEndpoint);
     const defaultContext = browser.contexts()[0];
     if (!defaultContext) {
@@ -144,15 +144,6 @@ export async function openChat(
     }
     context = defaultContext;
     close = () => browser.close();
-  } else {
-    const profile = resolve(process.env.PHOENIX_EDGE_PROFILE ?? join(process.cwd(), ".profiles", channel));
-    await mkdir(profile, { recursive: true });
-    context = await chromium.launchPersistentContext(profile, {
-      channel,
-      headless: false,
-      viewport: { width: 1440, height: 1000 },
-    });
-    close = () => context.close();
   }
 
   try {
@@ -161,7 +152,7 @@ export async function openChat(
     await page.getByLabel("Chat message").waitFor({ state: "visible", timeout: 30_000 });
     const modelPicker = page.getByRole("button", { name: /Select model/ });
     await modelPicker.click();
-    const expectedModel = channel === "chrome" ? "Gemini Nano" : "Phi";
+    const expectedModel = "Gemini Nano";
     const browserModel = page.getByRole("menuitem", { name: new RegExp(expectedModel, "i") });
     try {
       await browserModel.waitFor({ state: "visible", timeout: 10_000 });
@@ -172,7 +163,7 @@ export async function openChat(
     if (!browserModelLabel) throw new Error(`${channel}: Phoenix did not offer a browser built-in model.`);
     if (await browserModel.isDisabled()) {
       throw new Error(
-        `${channel}: browser model '${expectedModel}' is unavailable for this Chrome profile. Install Gemini Nano in this profile using visible Chrome, then retry.`,
+        `Chrome: browser model '${expectedModel}' is unavailable for this profile. Open this Chrome profile visibly, enable the Prompt API, install Gemini Nano, then retry.`,
       );
     }
     await browserModel.click();
