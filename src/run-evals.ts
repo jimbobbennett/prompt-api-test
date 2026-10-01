@@ -5,7 +5,12 @@ import { join } from "node:path";
 import { BENCHMARK_GROUPS, getDatasetName } from "../data/baseline.js";
 import { openChat, askInNewChat, type BrowserChannel } from "./browser-chat.js";
 import { loadConfig } from "./config.js";
-import { jsonSchemaValid, receiptValuesCorrect } from "./evaluators.js";
+import {
+  ifevalInstructionLevel,
+  ifevalPromptLevel,
+  jsonSchemaValid,
+  receiptValuesCorrect,
+} from "./evaluators.js";
 import { buildInlineJudge, JUDGE_SPECS, readJudgePrompt } from "./judge-config.js";
 
 const { client, baseUrl, datasetPrefix, evalTimeoutMs } = loadConfig();
@@ -17,6 +22,20 @@ const browsers = requested.split(",").map((value) => value.trim()).filter(Boolea
 if (browsers.some((browser) => !["chrome", "msedge"].includes(browser))) {
   throw new Error("Supported browser channels are chrome and msedge. Example: pnpm eval -- --browsers=chrome,msedge");
 }
+const availableGroupIds = BENCHMARK_GROUPS.map((group) => group.id);
+const requestedGroups = process.argv.find((arg) => arg.startsWith("--groups="))?.split("=")[1];
+const groups = requestedGroups
+  ? requestedGroups.split(",").map((value) => value.trim()).filter(Boolean)
+  : availableGroupIds;
+const unknownGroups = groups.filter((group) => !availableGroupIds.includes(group as (typeof availableGroupIds)[number]));
+if (groups.length === 0 || unknownGroups.length > 0) {
+  throw new Error(`Unknown or empty benchmark group selection. Available groups: ${availableGroupIds.join(", ")}.`);
+}
+const repetitionsValue = Number(process.argv.find((arg) => arg.startsWith("--repetitions="))?.split("=")[1] ?? 1);
+if (!Number.isInteger(repetitionsValue) || repetitionsValue < 1) {
+  throw new Error("--repetitions must be a positive integer.");
+}
+const selectedGroups = BENCHMARK_GROUPS.filter((group) => groups.includes(group.id));
 
 const reports: Array<Record<string, unknown>> = [];
 
@@ -100,7 +119,7 @@ async function runPhoenixJudge({ spec, experimentRunId, input, output, reference
 for (const browser of browsers) {
   const { page, close } = await openChat(browser, baseUrl);
   try {
-    for (const group of BENCHMARK_GROUPS) {
+    for (const group of selectedGroups) {
       const datasetName = getDatasetName(group, datasetPrefix);
       const { examples, versionId } = await getDatasetExamples({ client, dataset: { datasetName } });
       if (examples.length !== group.cases.length) {
@@ -131,9 +150,16 @@ for (const browser of browsers) {
           reports.push({ group: group.id, browser, exampleId: example.id, ...answer });
           return answer;
         },
-        evaluators: group.id === "receipt-extraction" ? [jsonSchemaValid, receiptValuesCorrect] : [],
+        repetitions: repetitionsValue,
+        evaluators: group.id === "receipt-extraction"
+          ? [jsonSchemaValid, receiptValuesCorrect]
+          : group.id === "instruction-following"
+            ? [ifevalPromptLevel, ifevalInstructionLevel]
+            : [],
       });
-      console.log(`${group.id} / ${browser}: ${experiment.successfulRunCount}/${experiment.exampleCount} runs; experiment ${experiment.id}`);
+      console.log(
+        `${group.id} / ${browser}: ${experiment.successfulRunCount} successful runs across ${experiment.exampleCount} examples (${repetitionsValue} repetition(s) each); experiment ${experiment.id}`,
+      );
       const caseIdByDatasetExampleId = new Map(examples.map((example) => [example.nodeId ?? example.id, example.id]));
       const caseIdByRunId = new Map(Object.values(experiment.runs).map((run) => [
         run.id,

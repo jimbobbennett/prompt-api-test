@@ -1,4 +1,6 @@
-export type BenchmarkGroupId = "receipt-extraction" | "intent-task-success" | "safety";
+import { IFEVAL_STYLE_CASES } from "./ifeval-style.js";
+
+export type BenchmarkGroupId = "receipt-extraction" | "intent-task-success" | "instruction-following" | "safety";
 
 export type BenchmarkCase = {
   id: string;
@@ -149,6 +151,13 @@ export const BENCHMARK_GROUPS: BenchmarkGroup[] = [
         metadata: { group: "intent-task-success", rubric_id: "task-success-v1", task: "meeting-extraction" },
       },
     ],
+  },
+  {
+    id: "instruction-following",
+    datasetNameSuffix: "ifeval-style-v1",
+    description: "IFEval-style instruction following on mechanically verifiable output constraints.",
+    phoenixJudgeName: null,
+    cases: IFEVAL_STYLE_CASES,
   },
   {
     id: "safety",
