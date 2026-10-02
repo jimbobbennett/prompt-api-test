@@ -3,14 +3,19 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22.12" },
+  "engines": {
+    "node": ">=22.12"
+  },
   "scripts": {
     "seed": "tsx src/seed.ts",
     "judges": "tsx src/create-judges.ts",
     "eval": "tsx src/run-evals.ts",
     "check": "pnpm typecheck && pnpm test",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "seed:cross-browser": "tsx src/seed-cross-browser.ts",
+    "evaluators:cross-browser": "tsx src/create-cross-browser-evaluators.ts",
+    "eval:cross-browser": "tsx src/run-cross-browser-evals.ts"
   },
   "dependencies": {
     "@arizeai/phoenix-client": "7.15.0",

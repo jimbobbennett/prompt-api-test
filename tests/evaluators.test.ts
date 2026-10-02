@@ -8,7 +8,6 @@ import {
   jsonSchemaValid,
   receiptValuesCorrect,
 } from "../src/evaluators.js";
-import { restoreListMarkers } from "../src/browser-chat.js";
 
 const receipt = BENCHMARK_GROUPS.find((group) => group.id === "receipt-extraction")!.cases[0]!;
 const expected = receipt.expected;
@@ -54,19 +53,6 @@ describe("baseline dataset", () => {
 });
 
 describe("IFEval-style constraint checkers", () => {
-  it("restores rendered Markdown list markers when reading Phoenix chat text", () => {
-    const visibleText = "Intro\nFirst point\nSecond point";
-    const items = [
-      { text: "First point", marker: "- " },
-      { text: "Second point", marker: "- " },
-    ];
-    expect(restoreListMarkers(visibleText, items)).toBe("Intro\n- First point\n- Second point");
-    expect(restoreListMarkers("First\nSecond", [
-      { text: "First", marker: "1. " },
-      { text: "Second", marker: "2. " },
-    ])).toBe("1. First\n2. Second");
-  });
-
   it("counts dash bullets exactly", () => {
     expect(checkInstruction("Intro\n- one\n- two", { id: "bullets", type: "exact_bullet_count", count: 2 }).passed).toBe(true);
     expect(checkInstruction("- one\n- two\n- three", { id: "bullets", type: "exact_bullet_count", count: 2 }).passed).toBe(false);

@@ -3,7 +3,8 @@ import { runExperiment } from "@arizeai/phoenix-client/experiments";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { BENCHMARK_GROUPS, getDatasetName } from "../data/baseline.js";
-import { openChat, askInNewChat, type BrowserChannel } from "./browser-chat.js";
+import { openBrowserAtUrl, type BrowserChannel } from "./browser.js";
+import { askWithPromptApi, openPromptApiPage, startPromptApiHarness } from "./prompt-api.js";
 import { loadConfig } from "./config.js";
 import {
   ifevalInstructionLevel,
@@ -116,89 +117,100 @@ async function runPhoenixJudge({ spec, experimentRunId, input, output, reference
   };
 }
 
-for (const browser of browsers) {
-  const { page, close } = await openChat(browser, baseUrl);
-  try {
-    for (const group of selectedGroups) {
-      const datasetName = getDatasetName(group, datasetPrefix);
-      const { examples, versionId } = await getDatasetExamples({ client, dataset: { datasetName } });
-      if (examples.length !== group.cases.length) {
-        throw new Error(`${datasetName}: expected ${group.cases.length} dataset examples, found ${examples.length}; run pnpm seed.`);
-      }
-      const startedAt = new Date().toISOString();
-      const experiment = await runExperiment({
-        client,
-        experimentName: `${group.id}-${browser}-${new Date().toISOString().replaceAll(":", "-")}`,
-        experimentDescription: `Prompt API browser benchmark, ${group.id}, ${browser}, dataset v1.`,
-        experimentMetadata: {
-          benchmark: "prompt-api-demo",
-          benchmarkVersion: "v1",
-          group: group.id,
-          browser,
-          channel: browser,
-          model: "phoenix-browser-ai",
-          datasetName,
-          datasetVersionId: versionId,
-          startedAt,
-        },
-        dataset: { datasetName },
-        concurrency: 1,
-        task: async (example) => {
-          const prompt = example.input.prompt;
-          if (typeof prompt !== "string") throw new Error(`Example ${example.id} has no prompt string.`);
-          const answer = await askInNewChat(page, prompt);
-          reports.push({ group: group.id, browser, exampleId: example.id, ...answer });
-          return answer;
-        },
-        repetitions: repetitionsValue,
-        evaluators: group.id === "receipt-extraction"
-          ? [jsonSchemaValid, receiptValuesCorrect]
-          : group.id === "instruction-following"
-            ? [ifevalPromptLevel, ifevalInstructionLevel]
-            : [],
-      });
-      console.log(
-        `${group.id} / ${browser}: ${experiment.successfulRunCount} successful runs across ${experiment.exampleCount} examples (${repetitionsValue} repetition(s) each); experiment ${experiment.id}`,
-      );
-      const caseIdByDatasetExampleId = new Map(examples.map((example) => [example.nodeId ?? example.id, example.id]));
-      const caseIdByRunId = new Map(Object.values(experiment.runs).map((run) => [
-        run.id,
-        caseIdByDatasetExampleId.get(run.datasetExampleId) ?? run.datasetExampleId,
-      ]));
-      for (const evaluation of experiment.evaluationRuns ?? []) {
-        reports.push({
-          group: group.id,
-          browser,
-          exampleId: caseIdByRunId.get(evaluation.experimentRunId) ?? "unknown",
-          evaluator: evaluation.name,
-          score: evaluation.result?.score ?? null,
-          label: evaluation.result?.label ?? null,
-          explanation: evaluation.result?.explanation ?? null,
+const promptHarness = await startPromptApiHarness();
+try {
+  for (const browser of browsers) {
+    const opened = await openPromptApiPage(promptHarness.url);
+    const { page, close } = opened;
+    try {
+      const browserRuntime = await page.evaluate(() => ({ userAgent: navigator.userAgent, platform: navigator.platform }));
+      const promptApiAvailability = opened.availability;
+      for (const group of selectedGroups) {
+        const datasetName = getDatasetName(group, datasetPrefix);
+        const { examples, versionId } = await getDatasetExamples({ client, dataset: { datasetName } });
+        if (examples.length !== group.cases.length) {
+          throw new Error(`${datasetName}: expected ${group.cases.length} dataset examples, found ${examples.length}; run pnpm seed.`);
+        }
+        const startedAt = new Date().toISOString();
+        const experiment = await runExperiment({
+          client,
+          experimentName: `${group.id}-${browser}-direct-api-${new Date().toISOString().replaceAll(":", "-")}`,
+          experimentDescription: `Direct Prompt API browser benchmark, ${group.id}, ${browser}, dataset v1.`,
+          experimentMetadata: {
+            benchmark: "prompt-api-demo",
+            benchmarkVersion: "v1",
+            group: group.id,
+            browser,
+            channel: browser,
+            model: "browser-provided-prompt-api-model",
+            generationMode: "direct-api",
+            browserRuntime,
+            promptApiAvailability,
+            datasetName,
+            datasetVersionId: versionId,
+            startedAt,
+          },
+          dataset: { datasetName },
+          concurrency: 1,
+          task: async (example) => {
+            const prompt = example.input.prompt;
+            if (typeof prompt !== "string") throw new Error(`Example ${example.id} has no prompt string.`);
+            const answer = await askWithPromptApi(page, prompt);
+            reports.push({ group: group.id, browser, generationMode: "direct-api", exampleId: example.id, ...answer });
+            return answer;
+          },
+          repetitions: repetitionsValue,
+          evaluators: group.id === "receipt-extraction"
+            ? [jsonSchemaValid, receiptValuesCorrect]
+            : group.id === "instruction-following"
+              ? [ifevalPromptLevel, ifevalInstructionLevel]
+              : [],
         });
-      }
-      if (group.phoenixJudgeName) {
-        const judgeSpec = JUDGE_SPECS.find((spec) => spec.evaluatorName === group.phoenixJudgeName);
-        if (!judgeSpec) throw new Error(`No prompt configuration found for Phoenix judge '${group.phoenixJudgeName}'.`);
-        for (const example of examples) {
-          const datasetExampleId = example.nodeId ?? example.id;
-          const run = Object.values(experiment.runs).find((candidate) => candidate.datasetExampleId === datasetExampleId);
-          if (!run) throw new Error(`Could not find the Phoenix experiment run for dataset example ${example.id}.`);
-          const score = await runPhoenixJudge({
-            spec: judgeSpec,
-            experimentRunId: run.id,
-            input: example.input,
-            output: run.output,
-            reference: example.output,
-            metadata: example.metadata,
+        console.log(
+          `${group.id} / ${browser}: ${experiment.successfulRunCount} successful runs across ${experiment.exampleCount} examples (${repetitionsValue} repetition(s) each); experiment ${experiment.id}`,
+        );
+        const caseIdByDatasetExampleId = new Map(examples.map((example) => [example.nodeId ?? example.id, example.id]));
+        const caseIdByRunId = new Map(Object.values(experiment.runs).map((run) => [
+          run.id,
+          caseIdByDatasetExampleId.get(run.datasetExampleId) ?? run.datasetExampleId,
+        ]));
+        for (const evaluation of experiment.evaluationRuns ?? []) {
+          reports.push({
+            group: group.id,
+            browser,
+            exampleId: caseIdByRunId.get(evaluation.experimentRunId) ?? "unknown",
+            evaluator: evaluation.name,
+            score: evaluation.result?.score ?? null,
+            label: evaluation.result?.label ?? null,
+            explanation: evaluation.result?.explanation ?? null,
           });
-          reports.push({ group: group.id, browser, exampleId: example.id, ...score });
-          console.log(`${group.id} / ${browser} / ${example.id}: ${score.evaluator}=${score.label} (${score.score ?? "no score"})`);
+        }
+        if (group.phoenixJudgeName) {
+          const judgeSpec = JUDGE_SPECS.find((spec) => spec.evaluatorName === group.phoenixJudgeName);
+          if (!judgeSpec) throw new Error(`No prompt configuration found for Phoenix judge '${group.phoenixJudgeName}'.`);
+          for (const example of examples) {
+            const datasetExampleId = example.nodeId ?? example.id;
+            const run = Object.values(experiment.runs).find((candidate) => candidate.datasetExampleId === datasetExampleId);
+            if (!run) throw new Error(`Could not find the Phoenix experiment run for dataset example ${example.id}.`);
+            const score = await runPhoenixJudge({
+              spec: judgeSpec,
+              experimentRunId: run.id,
+              input: example.input,
+              output: run.output,
+              reference: example.output,
+              metadata: example.metadata,
+            });
+            reports.push({ group: group.id, browser, exampleId: example.id, ...score });
+            console.log(`${group.id} / ${browser} / ${example.id}: ${score.evaluator}=${score.label} (${score.score ?? "no score"})`);
+          }
         }
       }
+    } finally {
+      await close();
     }
-  } finally {
-    await close();
   }
+} finally {
+  await promptHarness?.close();
 }
 
 const reportDir = join(process.cwd(), "results");
@@ -219,5 +231,5 @@ const summary = [...scoreGroups].map(([key, scores]) => ({
   scoredCases: scores.length,
   meanScore: scores.reduce((sum, score) => sum + score, 0) / scores.length,
 }));
-await writeFile(reportFile, `${JSON.stringify({ generatedAt: new Date().toISOString(), browsers, summary, cases: reports }, null, 2)}\n`);
+await writeFile(reportFile, `${JSON.stringify({ generatedAt: new Date().toISOString(), generationMode: "direct-api", browsers, summary, cases: reports }, null, 2)}\n`);
 console.log(`Browser timing report written to ${reportFile}`);
